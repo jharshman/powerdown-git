@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# powerdown-functions
+
+shopt -s nullglob extglob
+
+# turn on kernel options
+opt() {
+    [[ -f "$1" ]] || return
+    [[ -w "$1" ]] && echo "$2" | tee "$1" &>/dev/null || echo "[powerdown] cannot write $2 to $1"
+}
+
+# unload kernel module
+unload_mod() {
+    has_mod "$1" || return
+    modprobe -r "$1" || echo "[powerdown] cannot unload module $1"
+}
+
+unload_mod_recursive() {
+	local dep
+	for dep in $(lsmod | awk -v mod="$1" '$1==mod {gsub(",", " ", $4); print $4}'); do
+		unload_mod_recursive "$dep"
+	done
+	unload_mod "$1"
+}
+
+# load kernel module
+load_mod() {
+    has_mod "$1" || return
+    modprobe "$1" || echo "[powerdown] cannot load module $1"
+}
+
+# module exists
+has_mod() {
+    modprobe -nq "$1"
+}
+
+# module loaded
+mod_loaded() {
+    grep -qs "^$1 " /proc/modules
+}
+
+# brightness scale 0 to 5
+# $1 = max file
+# $2 = value
+num_scale() {
+    echo $(($(< "$1") / 5 * $2))
+}
+
+# command
+run() {
+    "$@" &> /dev/null || echo "[powerdown] cannot run $@"
+}
+
+has_bat() {
+	local bat
+	for bat in /sys/class/power_supply/BAT*; do
+		return 0
+	done
+	return 1
+}
+
+# get current power usage
+display_power() {
+    if ! has_bat; then
+        echo "[powerdown] no battery"
+        return
+    fi
+    local bat
+    for bat in /sys/class/power_supply/BAT*; do
+        local watt
+        if [[ -f "$bat/power_now" ]]; then
+            watt="$(bc <<< "scale=3; $(< "$bat/power_now") / 1000000")"
+        else
+            watt="$(bc <<< "scale=3; $(< "$bat/current_now") * $(< "$bat/voltage_now") / 1000000000000")"
+        fi
+        echo "[powerdown] $(basename "$bat") using $watt watts"
+    done
+}
+
+# get readahead
+display_readahead() {
+    echo "- $1 readahead: $(blockdev --getra "$1")"
+}
+
+# dump kernel option content
+dump () {
+    [[ -r "$1" ]] || return
+    echo "- $1: $(< "$1")"
+}
+
+display_module() {
+    has_mod "$1" || return
+    echo -n "- $1 "
+    mod_loaded "$1" && echo "loaded" || echo "not loaded"
+}
+
+display_wireless() {
+    echo "- $1 $(iw dev "$1" get power_save)"
+}
+
+hibernate_offset() {
+    filefrag -v /hibernate | awk 'NR==4 {print $4}' | tr -d .
+}
+
+root_part() {
+    df / | awk 'NR==2 {print $1}'
+}
+
+has_swap_part () {
+    grep -qs swap /etc/fstab
+}
+
+can_suspend_to_disk () {
+    [[ -f /hibernate ]] || has_swap_part
+}
+
+swap_part() {
+    awk '$3=="swap" {print $1; exit}' /etc/fstab
+}
+
+resume_boot_option() {
+    if [[ -f /hibernate ]]; then
+        echo "resume=$(root_part) resume_offset=$(hibernate_offset)"
+    elif has_swap_part; then
+        echo "resume=$(swap_part)"
+    fi
+}
+
+# lock the file until the script finishes
+lock() {
+    local LOCK=/tmp/powerdown.lock
+    if ! mkdir "$LOCK" 2> /dev/null; then
+        echo "Working... $LOCK"
+        exit
+    fi
+    trap "rm -rf $LOCK" EXIT
+}
+
+# $1 = device path
+is_usb_hid() {
+    local subdev
+    for subdev in $1/*:*; do
+        # USB_DEVICE_CLASS 3 = HID
+        [[ "$(< "$subdev/bInterfaceClass")" == 03 ]] && return 0
+    done
+    return 1
+}
+
+usb_powersave() {
+    local usbdev
+    for usbdev in /sys/bus/usb/devices/+([^:]); do
+        is_usb_hid "$usbdev" && opt "$usbdev/power/control" on || opt "$usbdev/power/control" auto
+    done
+}

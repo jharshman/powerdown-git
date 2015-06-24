@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+if [[ $EUID != 0 ]]; then
+    echo "[powerdown] must be run as root"
+    exit 1
+fi
+
+source /usr/lib/powerdown-functions
+lock
+
+if ! can_suspend_to_disk; then
+    echo "[powerdown] your first time to use hibernate"
+    echo "creating 2GB /hibernate"
+    dd if=/dev/zero of=/hibernate bs=2M count=1024
+    chmod 600 /hibernate
+    mkswap /hibernate
+fi
+
+
+cat <<EOF
+1. Add '$(resume_boot_option)' to the boot configuration.
+
+2. Add '/hibernate	swap	swap	defaults	0	0' to /etc/fstab
+
+3. Add 'resume' hook to /etc/mkinitcpio.conf right in front of 'filesystem' hook.
+Run 'mkinitcpio -p linux' to regenerate kernel image
+
+EOF

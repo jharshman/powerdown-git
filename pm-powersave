@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+case "$*" in
+    true)
+        powerdown
+        ;;
+    false)
+        powerup
+        ;;
+    *)
+        echo "[powerdown] pm-is-supported [ true | false ]"
+        exit 1
+        ;;
+esac

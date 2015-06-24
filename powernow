@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# powerdown - get energy usagei
+
+if [[ $EUID != 0 ]]; then
+    echo "[powerdown] must be run as root"
+    exit 1
+fi
+
+source /usr/lib/powerdown-functions
+
+lock
+display_power
+echo
+
+# nmi_watchdog
+dump /proc/sys/kernel/nmi_watchdog
+
+# cpu
+for i in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do dump "$i"; done
+
+# aspm
+dump /sys/module/pcie_aspm/parameters/policy
+
+# kernel write mode
+dump /proc/sys/vm/laptop_mode
+dump /proc/sys/vm/dirty_ratio
+dump /proc/sys/vm/dirty_background_ratio
+dump /proc/sys/vm/dirty_expire_centisecs
+dump /proc/sys/vm/dirty_writeback_centisecs
+
+
+# disk
+for dev in $(awk '/^\/dev\/sd/ {print $1}' /etc/mtab); do display_readahead "$dev"; done
+for i in /sys/class/scsi_host/host*/link_power_management_policy; do dump "$i"; done
+
+# sound card
+dump /sys/module/snd_hda_intel/parameters/power_save
+dump /sys/module/snd_hda_intel/parameters/power_save_controller
+dump /sys/module/snd_ac97_codec/parameters/power_save
+
+# net
+for i in $(iw dev | awk '$1 == "Interface" { print $2 }'); do display_wireless "$i"; done
+
+# screen
+for i in /sys/class/backlight/*; do dump "$i/brightness"; done
+
+# webcam
+display_module videodev
+
+# bluetooth
+display_module bluetooth
+
+# open source ATI
+dump /sys/kernel/debug/vgaswitcheroo/switch
+for i in /sys/class/drm/card*/device/power_method; do dump "$i"; done
+for i in /sys/class/drm/card*/device/power_profile; do dump "$i"; done
+for i in /sys/class/drm/card*/device/power_dpm_state; do dump "$i"; done
+
+# i915
+dump /sys/module/i915/parameters/i915_enable_rc6
+dump /sys/module/i915/parameters/lvds_downclock
+dump /sys/module/i915/parameters/i915_enable_fbc
+for i in /sys/kernel/debug/dri/*/i915_max_freq; do dump "$i"; done

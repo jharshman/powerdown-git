@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+source /usr/lib/powerdown-functions
+
+case "$*" in
+    --hibernate | --suspend-hybrid)
+        can_suspend_to_disk
+        ;;
+    --suspend)
+        ;;
+    *)
+        echo "[powerdown] pm-is-supported [ --hibernate | --suspend-hybrid | --suspend ]"
+        exit 1;
+        ;;
+esac
