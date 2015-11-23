@@ -1,7 +1,5 @@
 #Powerdown Scripts
 Open Source PowerSave Scripts for Linux
-Originally kept by taylorchu
-Now Maintained by securityvoodoo
 
 ###Install Locations
 ***
